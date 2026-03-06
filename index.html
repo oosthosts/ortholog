@@ -969,7 +969,7 @@ function parseCase(raw) {
     // No labels — treat entire string as header
     segments.push({label:"header", value: raw.trim()});
   } else {
-    segments.push({label:"header", value: raw.slice(0, matches[0].idx).trim()});
+    segments.push({label:"header", value: raw.slice(0, matches[0].idx).replace(/^[\s:,]+|[\s:,]+$/g, "").trim()});
     for (let i = 0; i < matches.length; i++) {
       const start = matches[i].end;
       const end = i + 1 < matches.length ? matches[i+1].idx : raw.length;
@@ -1004,7 +1004,7 @@ function parseCase(raw) {
     .replace(/\bPGY[-\s]?[1-5]\b/gi, "")
     .replace(/\bDr\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?/g, "")
     .replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+[0-9]{1,2}(?:st|nd|rd|th)?(?:[,\s]+[0-9]{4})?\b/gi, "")
-    .replace(/[,;\s]{2,}/g, " ").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+    .replace(/[,;\s]{2,}/g, " ").replace(/^[\s:,]+|[\s:,]+$/g, "").trim();
 
   // ── Step 3: Extract labeled fields directly from segments ──
   const approach  = seg("approach");
