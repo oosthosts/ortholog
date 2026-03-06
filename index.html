@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>OrthoLog · Dictate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #04080F;
+    --surface:   #080E1A;
+    --border:    #0F1E30;
+    --border2:   #162438;
+    --text:      #C8D8E8;
+    --muted:     #2A3F58;
+    --faint:     #111D2A;
+    --accent:    #1A8CFF;
+    --accent2:   #0D5FAA;
+    --green:     #1FD17A;
+    --red:       #FF4B4B;
+    --amber:     #F5A623;
+    --mono:      'IBM Plex Mono', monospace;
+    --serif:     'DM Serif Display', serif;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overscroll-behavior: none;
+  }
+
+  /* ── Animated background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(26,140,255,.07) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 80%, rgba(31,209,122,.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Subtle grid */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+
+  .app {
+    position: relative; z-index: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 0 60px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(4,8,15,.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .logo-mark svg { width: 20px; height: 20px; }
+
+  .logo-text {
+    font-family: var(--serif);
+    font-size: 20px;
+    color: #E8F4FF;
+    letter-spacing: -.3px;
+  }
+
+  .logo-sub {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-dot 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .5; transform: scale(.8); }
+  }
+
+  /* ── Tab Selector ── */
+  .tab-section {
+    padding: 20px 24px 0;
+  }
+
+  .tab-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .tab-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .tab-btn {
+    background: var(--faint);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 6px;
+    cursor: pointer;
+    text-align: center;
+    transition: all .15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .tab-btn:active { transform: scale(.95); }
+
+  .tab-btn.active {
+    background: var(--accent2);
+    border-color: var(--accent);
+    box-shadow: 0 0 16px rgba(26,140,255,.2);
+  }
+
+  .tab-btn .t-icon { font-size: 18px; line-height: 1; }
+  .tab-btn .t-name {
+    font-size: 9px;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: .3px;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .tab-btn.active .t-name { color: rgba(255,255,255,.8); }
+
+  /* ── Mic Section ── */
+  .mic-section {
+    padding: 28px 24px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .mic-ring {
+    position: relative;
+    width: 140px; height: 140px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .mic-ring-svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  .ring-track { stroke: var(--border2); fill: none; }
+  .ring-fill  { stroke: var(--accent); fill: none; stroke-linecap: round; transition: stroke-dashoffset .1s; }
+
+  .mic-btn {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+    position: relative;
+    z-index: 1;
+    background: linear-gradient(135deg, #0F2040, #162A4A);
+    box-shadow: 0 4px 24px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+
+  .mic-btn:active { transform: scale(.94); }
+
+  .mic-btn.idle {
+    background: linear-gradient(135deg, #0D1E35, #162A4A);
+    border: 2px solid var(--border2);
+  }
+
+  .mic-btn.recording {
+    background: linear-gradient(135deg, #3A0A0A, #5C1010);
+    border: 2px solid var(--red);
+    box-shadow: 0 0 32px rgba(255,75,75,.35), inset 0 1px 0 rgba(255,255,255,.06);
+    animation: mic-pulse 1.2s ease-in-out infinite;
+  }
+
+  .mic-btn.processing {
+    background: linear-gradient(135deg, #0A1E38, #0E2A50);
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 28px rgba(26,140,255,.3);
+    animation: mic-spin-glow 2s linear infinite;
+  }
+
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 24px rgba(255,75,75,.3); }
+    50% { box-shadow: 0 0 48px rgba(255,75,75,.6); }
+  }
+
+  @keyframes mic-spin-glow {
+    0%,100% { box-shadow: 0 0 24px rgba(26,140,255,.3); }
+    50% { box-shadow: 0 0 48px rgba(26,140,255,.6); }
+  }
+
+  .mic-icon { font-size: 36px; transition: all .2s; }
+
+  .mic-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    height: 16px;
+    transition: color .2s;
+  }
+
+  .mic-status.recording { color: var(--red); }
+  .mic-status.processing { color: var(--accent); }
+  .mic-status.success { color: var(--green); }
+  .mic-status.error { color: var(--red); }
+
+  /* Waveform bars */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 28px;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .waveform.active { opacity: 1; }
+  .wave-bar {
+    width: 3px;
+    background: var(--red);
+    border-radius: 2px;
+    animation: wave-anim 1s ease-in-out infinite;
+    min-height: 4px;
+  }
+  .wave-bar:nth-child(1) { animation-delay: 0s; }
+  .wave-bar:nth-child(2) { animation-delay: .1s; }
+  .wave-bar:nth-child(3) { animation-delay: .2s; }
+  .wave-bar:nth-child(4) { animation-delay: .15s; }
+  .wave-bar:nth-child(5) { animation-delay: .05s; }
+  .wave-bar:nth-child(6) { animation-delay: .25s; }
+  .wave-bar:nth-child(7) { animation-delay: .1s; }
+
+  @keyframes wave-anim {
+    0%,100% { height: 4px; }
+    50% { height: 24px; }
+  }
+
+  /* ── Transcript Box ── */
+  .transcript-section {
+    padding: 20px 24px 0;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .transcript-box {
+    background: var(--faint);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    min-height: 90px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    resize: none;
+    width: 100%;
+    font-family: var(--sans);
+    outline: none;
+    transition: border-color .2s;
+  }
+
+  .transcript-box:focus { border-color: var(--accent); }
+
+  .transcript-box::placeholder { color: var(--muted); font-style: italic; }
+
+  .extract-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    letter-spacing: .3px;
+    transition: opacity .15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .extract-btn:active { opacity: .8; }
+  .extract-btn:disabled { opacity: .4; pointer-events: none; }
+
+  /* ── Extracted Fields ── */
+  .fields-section {
+    padding: 20px 24px 0;
+  }
+
+  .fields-card {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    overflow: hidden;
+    display: none;
+  }
+  .fields-card.visible { display: block; }
+
+  .fields-header {
+    padding: 12px 16px;
+    background: var(--faint);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .fields-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .fields-edit-hint {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+  .field-row:last-child { border-bottom: none; }
+
+  .field-key {
+    padding: 11px 12px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--faint);
+    border-right: 1px solid var(--border);
+    display: flex; align-items: center;
+  }
+
+  .field-val {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--sans);
+    width: 100%;
+    line-height: 1.5;
+    resize: none;
+    min-height: 36px;
+  }
+  .field-val:focus { background: rgba(26,140,255,.05); }
+
+  /* ── Save Button ── */
+  .save-section {
+    padding: 16px 24px 0;
+    display: none;
+  }
+  .save-section.visible { display: block; }
+
+  .save-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #0A3A1A, var(--green));
+    border: 1px solid var(--green);
+    border-radius: 14px;
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    letter-spacing: .3px;
+    transition: all .2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 4px 20px rgba(31,209,122,.15);
+  }
+  .save-btn:active { transform: scale(.98); opacity: .85; }
+  .save-btn:disabled { opacity: .4; pointer-events: none; }
+
+  .tab-indicator {
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(31,209,122,.15);
+    border: 1px solid rgba(31,209,122,.3);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: .5px;
+  }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    z-index: 100;
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    max-width: 90vw;
+    white-space: normal;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.success { border-color: rgba(31,209,122,.4); color: var(--green); }
+  .toast.error   { border-color: rgba(255,75,75,.4);  color: var(--red); }
+  .toast.info    { border-color: rgba(26,140,255,.4);  color: #7ABFFF; }
+
+  /* ── Timer ── */
+  .timer {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--red);
+    letter-spacing: 2px;
+    opacity: 0;
+    transition: opacity .3s;
+    height: 28px;
+    display: flex; align-items: center;
+  }
+  .timer.active { opacity: 1; }
+
+  /* ── Instructions ── */
+  .instructions {
+    padding: 16px 24px 0;
+  }
+
+  .instruction-card {
+    background: var(--faint);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .instruction-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .instr-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--border2);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+
+  .instr-text {
+    font-size: 12px;
+    color: #5A7A9A;
+    line-height: 1.6;
+  }
+
+  .instr-text strong { color: #8AABCC; }
+
+  select.field-val {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M3 12h4l2-6 4 12 3-8 2 2h3" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">OrthoLog</div>
+        <div class="logo-sub">Dictate &amp; Log</div>
+      </div>
+    </div>
+    <div class="status-dot" id="statusDot"></div>
+  </header>
+
+  <!-- Tab selector -->
+  <div class="tab-section">
+    <div class="tab-label">Select Subspecialty</div>
+    <div class="tab-grid" id="tabGrid">
+      <button class="tab-btn active" data-tab="hand">
+        <span class="t-icon">✋</span>
+        <span class="t-name">Hand</span>
+      </button>
+      <button class="tab-btn" data-tab="trauma">
+        <span class="t-icon">🚨</span>
+        <span class="t-name">Trauma</span>
+      </button>
+      <button class="tab-btn" data-tab="shoulder">
+        <span class="t-icon">💪</span>
+        <span class="t-name">Shoulder</span>
+      </button>
+      <button class="tab-btn" data-tab="sports">
+        <span class="t-icon">⚡</span>
+        <span class="t-name">Sports</span>
+      </button>
+      <button class="tab-btn" data-tab="joints">
+        <span class="t-icon">🦴</span>
+        <span class="t-name">Joints</span>
+      </button>
+      <button class="tab-btn" data-tab="peds">
+        <span class="t-icon">🧒</span>
+        <span class="t-name">Peds</span>
+      </button>
+      <button class="tab-btn" data-tab="fna">
+        <span class="t-icon">🦶</span>
+        <span class="t-name">Foot &amp; Ankle</span>
+      </button>
+      <button class="tab-btn" data-tab="spine">
+        <span class="t-icon">🔩</span>
+        <span class="t-name">Spine</span>
+      </button>
+      <button class="tab-btn" data-tab="onc">
+        <span class="t-icon">🔬</span>
+        <span class="t-name">Onc</span>
+      </button>
+      <button class="tab-btn" data-tab="infection">
+        <span class="t-icon">🧫</span>
+        <span class="t-name">Infection</span>
+      </button>
+      <button class="tab-btn" data-tab="dr">
+        <span class="t-icon">🌴</span>
+        <span class="t-name">Dom. Rep.</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mic -->
+  <div class="mic-section">
+    <div class="mic-ring">
+      <svg class="mic-ring-svg" viewBox="0 0 140 140">
+        <circle class="ring-track" cx="70" cy="70" r="62" stroke-width="3"/>
+        <circle class="ring-fill" id="ringFill" cx="70" cy="70" r="62" stroke-width="3"
+          stroke-dasharray="389.6" stroke-dashoffset="389.6"
+          transform="rotate(-90 70 70)"/>
+      </svg>
+      <button class="mic-btn idle" id="micBtn" onclick="toggleRecording()">
+        <span class="mic-icon" id="micIcon">🎙</span>
+      </button>
+    </div>
+
+    <div class="waveform" id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+
+    <div class="timer" id="timer">0:00</div>
+    <div class="mic-status" id="micStatus">Tap to dictate</div>
+  </div>
+
+  <!-- Transcript -->
+  <div class="transcript-section">
+    <div class="section-label">Transcript / Type</div>
+    <textarea class="transcript-box" id="transcriptBox"
+      placeholder="Tap the mic above to dictate, or type/paste your case summary here…&#10;&#10;You can dictate multiple cases at once — Claude will separate them."></textarea>
+    <button class="extract-btn" id="extractBtn" onclick="extractFromText()" disabled>
+      ✨ Extract to Fields
+    </button>
+  </div>
+
+  <!-- Extracted Fields -->
+  <div class="fields-section">
+    <div class="section-label">Extracted Fields</div>
+    <div class="fields-card" id="fieldsCard">
+      <div class="fields-header">
+        <span class="fields-title">✓ Fields extracted — review &amp; edit</span>
+        <span class="fields-edit-hint">tap to edit</span>
+      </div>
+      <div id="fieldsBody"></div>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div class="save-section" id="saveSection">
+    <button class="save-btn" id="saveBtn" onclick="saveToSheet()">
+      <span>Save to Google Sheet</span>
+      <span class="tab-indicator" id="saveTabLabel">HAND</span>
+    </button>
+  </div>
+
+  <!-- Instructions -->
+  <div class="instructions">
+    <div class="tab-label" style="margin-bottom:8px">How to use</div>
+    <div class="instruction-card">
+      <div class="instruction-row">
+        <div class="instr-num">1</div>
+        <div class="instr-text">Select the <strong>subspecialty tab</strong> above</div>
+      </div>
+      <div class="instruction-row">
+        <div class="instr-num">2</div>
+        <div class="instr-text">Tap the <strong>microphone</strong> and dictate your case. Say "first case… second case…" to log multiple at once.</div>
+      </div>
+      <div class="instruction-row">
+        <div class="instr-num">3</div>
+        <div class="instr-text">Claude <strong>extracts all fields</strong> automatically — review and edit if needed</div>
+      </div>
+      <div class="instruction-row">
+        <div class="instr-num">4</div>
+        <div class="instr-text">Tap <strong>Save to Google Sheet</strong> — it goes straight into the correct tab</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzavA0_CbvF1Y52uxEiQdZB8msBf-3Tq0HYApGOkXesjTFfR2IpX1XZrQjfxI4KkFeu/exec";
+const CLAUDE_API = "https://api.anthropic.com/v1/messages";
+
+const TABS = {
+  hand:      { label: "Hand",            icon: "✋" },
+  trauma:    { label: "Trauma",          icon: "🚨" },
+  shoulder:  { label: "Shoulder",        icon: "💪" },
+  sports:    { label: "Sports",          icon: "⚡" },
+  joints:    { label: "Joints",          icon: "🦴" },
+  peds:      { label: "Peds",            icon: "🧒" },
+  fna:       { label: "Foot & Ankle",    icon: "🦶" },
+  spine:     { label: "Spine",           icon: "🔩" },
+  onc:       { label: "Oncology",        icon: "🔬" },
+  infection: { label: "Infection",       icon: "🧫" },
+  dr:        { label: "Dominican Rep.",  icon: "🌴" },
+};
+
+const FIELDS = [
+  { key: "trainingYear", label: "PGY",       type: "select", options: ["PGY-1","PGY-2","PGY-3","PGY-4","PGY-5"] },
+  { key: "date",         label: "Date",       type: "date"   },
+  { key: "attending",    label: "Attending",  type: "text"   },
+  { key: "caseInfo",     label: "Case",       type: "textarea" },
+  { key: "approach",     label: "Approach",   type: "text"   },
+  { key: "implants",     label: "Implants",   type: "text"   },
+  { key: "notes",        label: "Notes",      type: "textarea" },
+  { key: "mrn",          label: "MRN",        type: "text"   },
+  { key: "cptCodes",     label: "CPT",        type: "text"   },
+];
+
+function getCurrentPGY() {
+  return new Date() < new Date("2026-06-30") ? "PGY-3" : "PGY-4";
+}
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
+// ── State ─────────────────────────────────────────────────
+let activeTab = "hand";
+let isRecording = false;
+let recognition = null;
+let extractedCases = [];
+let currentCaseIdx = 0;
+let timerInterval = null;
+let timerSeconds = 0;
+let fullTranscript = "";
+
+// ── Tab selection ─────────────────────────────────────────
+document.getElementById("tabGrid").addEventListener("click", e => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn) return;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  activeTab = btn.dataset.tab;
+  updateSaveLabel();
+});
+
+function updateSaveLabel() {
+  document.getElementById("saveTabLabel").textContent = TABS[activeTab]?.label?.toUpperCase() || activeTab.toUpperCase();
+}
+
+// ── Transcript box ────────────────────────────────────────
+const tBox = document.getElementById("transcriptBox");
+const extractBtn = document.getElementById("extractBtn");
+tBox.addEventListener("input", () => {
+  extractBtn.disabled = !tBox.value.trim();
+});
+
+// ── Recording ─────────────────────────────────────────────
+function toggleRecording() {
+  if (isRecording) stopRecording();
+  else startRecording();
+}
+
+function startRecording() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    showToast("Speech recognition not supported. Please type your dictation.", "error");
+    return;
+  }
+
+  fullTranscript = "";
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+
+  recognition.onstart = () => {
+    isRecording = true;
+    setMicState("recording");
+    startTimer();
+    showToast("Recording… speak clearly", "info");
+  };
+
+  recognition.onresult = e => {
+    let interim = "";
+    let final = "";
+    for (let i = 0; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t + " ";
+      else interim += t;
+    }
+    fullTranscript = final;
+    tBox.value = final + interim;
+    extractBtn.disabled = !tBox.value.trim();
+  };
+
+  recognition.onerror = err => {
+    console.error("SR error:", err.error);
+    stopRecording();
+    if (err.error === "not-allowed") {
+      showToast("Microphone permission denied. Please allow mic access in Safari Settings.", "error");
+    } else {
+      showToast("Recording error — please try again.", "error");
+    }
+  };
+
+  recognition.onend = () => {
+    if (isRecording) {
+      // Restart if still recording (iOS sometimes stops early)
+      try { recognition.start(); } catch(e) { stopRecording(); }
+    }
+  };
+
+  try { recognition.start(); }
+  catch(e) { showToast("Could not start microphone. Check Safari permissions.", "error"); }
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) { try { recognition.stop(); } catch(e) {} recognition = null; }
+  stopTimer();
+  setMicState("idle");
+  const finalText = tBox.value.trim();
+  if (finalText) {
+    showToast("Recording complete — extracting fields…", "info");
+    setTimeout(() => extractFromText(), 400);
+  }
+}
+
+// ── Timer ─────────────────────────────────────────────────
+function startTimer() {
+  timerSeconds = 0;
+  const el = document.getElementById("timer");
+  el.classList.add("active");
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    const m = Math.floor(timerSeconds/60);
+    const s = String(timerSeconds % 60).padStart(2,"0");
+    el.textContent = `${m}:${s}`;
+    // Update ring
+    const pct = Math.min(timerSeconds / 180, 1); // fill over 3 mins
+    const circumference = 389.6;
+    document.getElementById("ringFill").style.strokeDashoffset = circumference * (1 - pct);
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  document.getElementById("timer").classList.remove("active");
+  document.getElementById("ringFill").style.strokeDashoffset = "389.6";
+}
+
+// ── Mic UI states ─────────────────────────────────────────
+function setMicState(state) {
+  const btn = document.getElementById("micBtn");
+  const icon = document.getElementById("micIcon");
+  const status = document.getElementById("micStatus");
+  const waveform = document.getElementById("waveform");
+
+  btn.className = `mic-btn ${state}`;
+
+  if (state === "idle") {
+    icon.textContent = "🎙";
+    status.textContent = "Tap to dictate";
+    status.className = "mic-status";
+    waveform.classList.remove("active");
+  } else if (state === "recording") {
+    icon.textContent = "⏹";
+    status.textContent = "Recording — tap to stop";
+    status.className = "mic-status recording";
+    waveform.classList.add("active");
+  } else if (state === "processing") {
+    icon.textContent = "⟳";
+    status.textContent = "Extracting fields…";
+    status.className = "mic-status processing";
+    waveform.classList.remove("active");
+  }
+}
+
+// ── Claude extraction ─────────────────────────────────────
+async function extractFromText() {
+  const text = tBox.value.trim();
+  if (!text) return;
+
+  setMicState("processing");
+  extractBtn.disabled = true;
+
+  const systemPrompt = `You are a surgical case log assistant for an orthopaedic surgery resident.
+The input may describe ONE or MULTIPLE surgical cases.
+Extract each case and return ONLY a valid JSON array. Each element must have exactly these keys:
+- trainingYear: one of PGY-1 PGY-2 PGY-3 PGY-4 PGY-5, use "${getCurrentPGY()}" if not mentioned
+- date: YYYY-MM-DD if detectable, else "${todayStr()}"
+- attending: surgeon name, else ""
+- caseInfo: concise 1-2 sentence procedure + patient summary
+- approach: surgical approach, else ""
+- implants: implants/hardware/fixation, else ""
+- notes: complications, pearls, teaching points, else ""
+- mrn: patient MRN if stated, else ""
+- cptCodes: CPT codes if stated, else ""
+Current subspecialty context: ${TABS[activeTab]?.label || activeTab}.
+Return ONLY the JSON array. No markdown, no explanation.`;
+
+  try {
+    const res = await fetch(CLAUDE_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: `Dictation:\n"${text}"` }]
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const raw = data.content?.map(b => b.text || "").join("") || "";
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    extractedCases = Array.isArray(parsed) ? parsed : [parsed];
+    currentCaseIdx = 0;
+
+    renderFields(extractedCases[0]);
+    setMicState("idle");
+
+    if (extractedCases.length > 1) {
+      showToast(`${extractedCases.length} cases detected — saving one at a time`, "info");
+      setupMultiCase();
+    } else {
+      showToast("Fields extracted ✓", "success");
+    }
+  } catch(e) {
+    console.error("Extraction error:", e);
+    setMicState("idle");
+    extractBtn.disabled = false;
+    showToast("Extraction failed — check your connection and try again.", "error");
+  }
+}
+
+// ── Multi-case navigation ─────────────────────────────────
+function setupMultiCase() {
+  const sec = document.getElementById("saveSection");
+  // Add prev/next if multiple cases
+  const existing = document.getElementById("multiNav");
+  if (existing) existing.remove();
+
+  if (extractedCases.length <= 1) return;
+
+  const nav = document.createElement("div");
+  nav.id = "multiNav";
+  nav.style.cssText = "display:flex;gap:8px;margin-bottom:10px;align-items:center;";
+  nav.innerHTML = `
+    <button onclick="prevCase()" style="flex:1;padding:10px;background:var(--faint);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--sans);cursor:pointer;font-size:13px;">← Prev</button>
+    <span id="caseCounter" style="font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;">1 of ${extractedCases.length}</span>
+    <button onclick="nextCase()" style="flex:1;padding:10px;background:var(--faint);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--sans);cursor:pointer;font-size:13px;">Next →</button>
+  `;
+  sec.insertBefore(nav, sec.firstChild);
+}
+
+function prevCase() {
+  if (currentCaseIdx > 0) {
+    saveCurrentFieldsToCase();
+    currentCaseIdx--;
+    renderFields(extractedCases[currentCaseIdx]);
+    document.getElementById("caseCounter").textContent = `${currentCaseIdx+1} of ${extractedCases.length}`;
+  }
+}
+
+function nextCase() {
+  if (currentCaseIdx < extractedCases.length - 1) {
+    saveCurrentFieldsToCase();
+    currentCaseIdx++;
+    renderFields(extractedCases[currentCaseIdx]);
+    document.getElementById("caseCounter").textContent = `${currentCaseIdx+1} of ${extractedCases.length}`;
+  }
+}
+
+function saveCurrentFieldsToCase() {
+  FIELDS.forEach(f => {
+    const el = document.getElementById(`field_${f.key}`);
+    if (el) extractedCases[currentCaseIdx][f.key] = el.value;
+  });
+}
+
+// ── Render fields ─────────────────────────────────────────
+function renderFields(caseData) {
+  const card = document.getElementById("fieldsCard");
+  const body = document.getElementById("fieldsBody");
+  const saveSection = document.getElementById("saveSection");
+
+  body.innerHTML = "";
+
+  FIELDS.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "field-row";
+
+    const key = document.createElement("div");
+    key.className = "field-key";
+    key.textContent = f.label;
+
+    let val;
+    if (f.type === "select") {
+      val = document.createElement("select");
+      val.className = "field-val";
+      f.options.forEach(opt => {
+        const o = document.createElement("option");
+        o.value = opt; o.textContent = opt;
+        if ((caseData[f.key] || getCurrentPGY()) === opt) o.selected = true;
+        val.appendChild(o);
+      });
+    } else if (f.type === "textarea") {
+      val = document.createElement("textarea");
+      val.className = "field-val";
+      val.rows = 2;
+      val.style.resize = "vertical";
+      val.value = caseData[f.key] || "";
+    } else {
+      val = document.createElement("input");
+      val.className = "field-val";
+      val.type = f.type || "text";
+      val.value = caseData[f.key] || (f.key === "date" ? todayStr() : "");
+    }
+
+    val.id = `field_${f.key}`;
+    row.appendChild(key);
+    row.appendChild(val);
+    body.appendChild(row);
+  });
+
+  card.classList.add("visible");
+  saveSection.classList.add("visible");
+  updateSaveLabel();
+
+  // Scroll to fields
+  setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
+}
+
+// ── Save to sheet ─────────────────────────────────────────
+async function saveToSheet() {
+  saveCurrentFieldsToCase();
+  const caseData = extractedCases[currentCaseIdx];
+
+  const btn = document.getElementById("saveBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> Saving…';
+
+  const payload = { tab: activeTab, ...caseData };
+
+  const btnLabel = () => `<span>Save to Google Sheet</span><span class="tab-indicator" id="saveTabLabel">${TABS[activeTab]?.label?.toUpperCase()}</span>`;
+
+  try {
+    // Use GET with URL params — bypasses CORS entirely for Apps Script
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k, v]) => params.append(k, v || ""));
+    const url = `${SCRIPT_URL}?${params.toString()}`;
+    const res = await fetch(url, { method: "GET" });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    if (result.success === false) throw new Error(result.error || "Server error");
+
+    showToast(`✓ Saved to ${TABS[activeTab]?.label} tab! Row ${result.row || ""}`, "success");
+
+    if (extractedCases.length > 1 && currentCaseIdx < extractedCases.length - 1) {
+      setTimeout(() => nextCase(), 600);
+      btn.disabled = false;
+      btn.innerHTML = btnLabel();
+    } else {
+      setTimeout(() => {
+        resetForm();
+        btn.disabled = false;
+        btn.innerHTML = btnLabel();
+      }, 1200);
+    }
+  } catch(err) {
+    console.error("Save error:", err);
+    showToast(`Save failed: ${err.message}`, "error");
+    btn.disabled = false;
+    btn.innerHTML = btnLabel();
+  }
+}
+
+function resetForm() {
+  tBox.value = "";
+  extractBtn.disabled = true;
+  document.getElementById("fieldsCard").classList.remove("visible");
+  document.getElementById("saveSection").classList.remove("visible");
+  const nav = document.getElementById("multiNav");
+  if (nav) nav.remove();
+  extractedCases = [];
+  currentCaseIdx = 0;
+}
+
+// ── Toast ─────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = "info") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove("show"); }, 3500);
+}
+
+// ── Init ──────────────────────────────────────────────────
+updateSaveLabel();
+
+// Add spin keyframe dynamically
+const style = document.createElement("style");
+style.textContent = "@keyframes spin { to { transform: rotate(360deg); } }";
+document.head.appendChild(style);
+</script>
+</body>
+</html>
