@@ -912,91 +912,121 @@ function extractFromText() {
 }
 
 function splitCases(text) {
-  const parts = text.split(/\b(?:case\s+(?:one|two|three|four|five|1|2|3|4|5)|(?:first|second|third|fourth|fifth)\s+case|case\s*#?\s*[1-5])\b/gi)
-    .map(s => s.trim()).filter(s => s.length > 10);
+  // Split ONLY on explicit case markers that appear at the START of a phrase
+  // (after punctuation, period, or at the very beginning of the string).
+  // This prevents splitting on "2nd/3rd extensor compartment" mid-sentence.
+  //
+  // Valid triggers (must be at sentence boundary or start):
+  //   "1st case:", "2nd case:", "case 1:", "first case:", etc.
+  //   Also "1st case," or "1st case " followed by PGY/date/Dr.
+  //
+  // NOT triggered by:
+  //   "the approach was the 2nd extensor compartment"
+  //   "use a 3rd generation nail"
+  //   "approach: 2nd/3rd dorsal compartment"
+
+  // Require the case marker to follow a sentence boundary (start, period, comma+space)
+  const splitter = /(?:^|(?<=[.!?]\s*)|(?<=,\s{0,3}))(?:(?:first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|[1-5])\s+case|case\s+(?:one|two|three|four|five|1st|2nd|3rd|4th|5th|[1-5]))(?=\s*[:\-,]|\s+(?:PGY|Dr\.|today|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))/gi;
+
+  const parts = text.split(splitter).map(s => s.trim()).filter(s => s.length > 10);
   return parts.length > 1 ? parts : [text];
 }
 
 function parseCase(raw) {
-  // ── PGY ──
+  // Strategy: extract labeled fields in one pass using a segment splitter.
+  // Expected format (any order, comma-separated):
+  // "PGY-3, March 5 2026, Dr. X, [procedure], approach: X, implants: X, notes: X, CPT: X"
+  // We split on known label keywords first, then clean up.
+
+  const MONTHS = {january:"01",february:"02",march:"03",april:"04",may:"05",june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12",jan:"01",feb:"02",mar:"03",apr:"04",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+
+  // ── Step 1: Split into labeled segments ──────────────────
+  // Find positions of each label keyword
+  const LABELS = ["approach","implants","implant","hardware","notes","note","findings","CPT","MRN"];
+  // Only match labels that are followed immediately by a colon (approach: / implants: / notes: etc.)
+  // This prevents "the approach was..." mid-sentence from triggering a new segment.
+  const labelRE = new RegExp(`\\b(${LABELS.join("|")})[:\\s]*:`, "gi");
+
+  // Build segment list: [{label, value}]
+  // Track which labels we've already seen — only use FIRST occurrence of each label.
+  const segments = [];
+  const seenLabels = new Set();
+  let lastIdx = 0, lastLabel = "header", m;
+  const matches = [];
+  while ((m = labelRE.exec(raw)) !== null) {
+    const lbl = m[1].toLowerCase();
+    if (!seenLabels.has(lbl)) {
+      seenLabels.add(lbl);
+      // Advance end to after the colon
+      const colonIdx = raw.indexOf(":", m.index + m[1].length);
+      if (colonIdx !== -1) {
+        matches.push({idx: m.index, label: lbl, end: colonIdx + 1});
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    // No labels — treat entire string as header
+    segments.push({label:"header", value: raw.trim()});
+  } else {
+    segments.push({label:"header", value: raw.slice(0, matches[0].idx).trim()});
+    for (let i = 0; i < matches.length; i++) {
+      const start = matches[i].end;
+      const end = i + 1 < matches.length ? matches[i+1].idx : raw.length;
+      segments.push({label: matches[i].label, value: raw.slice(start, end).trim().replace(/,\s*$/, "").trim()});
+    }
+  }
+
+  const seg = (lbl) => {
+    const found = segments.find(s => s.label === lbl || (lbl === "implants" && s.label === "implant") || (lbl === "notes" && s.label === "note") || (lbl === "notes" && s.label === "findings"));
+    return found ? found.value : "";
+  };
+
+  // ── Step 2: Parse header segment for PGY, date, attending, procedure ──
+  const header = segments[0].value;
+
   const pgyM = raw.match(/\bPGY[-\s]?([1-5])\b/i);
   const trainingYear = pgyM ? `PGY-${pgyM[1]}` : getCurrentPGY();
 
-  // ── Date ──
   let date = todayStr();
-  const MONTHS = {january:"01",february:"02",march:"03",april:"04",may:"05",june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12",jan:"01",feb:"02",mar:"03",apr:"04",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
-  const dM = raw.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+([0-9]{1,2})(?:st|nd|rd|th)?(?:[,\s]+([0-9]{4}))?\b/i);
+  const dM = header.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+([0-9]{1,2})(?:st|nd|rd|th)?(?:[,\s]+([0-9]{4}))?\b/i);
   if (dM) {
     const yr = dM[3] || new Date().getFullYear();
     date = `${yr}-${MONTHS[dM[1].toLowerCase()]}-${String(parseInt(dM[2])).padStart(2,"0")}`;
   }
 
-  // ── Attending ──
   let attending = "";
-  const drM = raw.match(/\bDr\.?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/);
+  const drM = header.match(/\bDr\.?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/);
   if (drM) attending = "Dr. " + drM[1];
 
-  // ── MRN ──
-  const mrnM = raw.match(/\bMRN[:\s#]*([A-Z0-9-]{4,12})\b/i);
-  const mrn = mrnM ? mrnM[1] : "";
-
-  // ── CPT — extract first, so it doesn't bleed into notes ──
-  const cptM = raw.match(/\bCPT[:\s]*([0-9]{5}(?:[,\s]+[0-9]{5})*)/i);
-  const cptCodes = cptM ? cptM[1].replace(/\s+/g,", ").replace(/,,/g,",") : "";
-
-  // ── Approach — handle labeled field OR numbered compartment patterns ──
-  let approach = "";
-  // First: explicit "approach: X" label
-  const appLabelM = raw.match(/\bapproach[:\s,]+([^,\.\n]{3,60}?)(?:\s*,|\s*implant|\s*note|\s*CPT|$)/i);
-  if (appLabelM) {
-    approach = appLabelM[1].trim();
-  } else {
-    // Second: known named approaches
-    const appNameM = raw.match(/\b(standard|volar|dorsal|medial|lateral|posterior|anterior|anterolateral|posteromedial|extensile|henry|kocher|thompson|triceps.splitting|transtibial|transtendinous|mini.open|open|arthroscopic|percutaneous|minimally\s+invasive|midline|parapatellar|subvastus|trivector|watson.jones|smith.petersen|ilioinguinal|stoppa|hardinge|moore|southern|closed|radial|ulnar)(?:\s+approach|\s+sided)?/i);
-    if (appNameM) approach = appNameM[0].trim();
-    // Third: extensor/flexor compartment patterns e.g. "2nd/3rd extensor compartment"
-    const compM = raw.match(/\b([0-9]+(?:st|nd|rd|th)?(?:\s*[/\-]\s*[0-9]+(?:st|nd|rd|th)?)?)\s+(extensor|flexor|dorsal|volar)\s+compartment\b/i);
-    if (compM) approach = (approach ? approach + ", " : "") + compM[0].trim();
-  }
-
-  // ── Implants — labeled field gets priority, then specific device patterns ──
-  let implants = "";
-  if (/\bno\s+implants?\b/i.test(raw)) {
-    implants = "None";
-  } else {
-    // Explicit implant label
-    const impLabelM = raw.match(/\b(?:implants?|hardware|fixation)[:\s,]+([^,\.\n]{2,80}?)(?:\s*,|\s*note|\s*CPT|\s*approach|$)/i);
-    if (impLabelM) {
-      implants = impLabelM[1].trim();
-    } else {
-      // Device-specific patterns: size + device name (e.g. "2.5mm ESIN", "3.5 locking plate", "single k-wire")
-      const deviceM = raw.match(/\b(?:single\s+)?(?:[0-9]+(?:\.[0-9]+)?\s*mm\s+)?([A-Z]{2,6}|k[-\s]?wire|elastic\s+nail|locking\s+plate|intramedullary\s+nail|cannulated\s+screw|anchor|rod|pin)\b/i);
-      if (deviceM) implants = deviceM[0].trim();
-    }
-  }
-
-  // ── Notes — strip CPT from notes if it bled in ──
-  let notes = "";
-  const notesM = raw.match(/\b(?:notes?|findings?|complications?|pearls?)[:\s,]+([^\n]{3,150})/i);
-  if (notesM) {
-    notes = notesM[1]
-      .replace(/,?\s*CPT[:\s]*[0-9,\s]*/gi, "")
-      .trim();
-  }
-
-  // ── Case Info — strip all extracted fields, keep the procedure ──
-  let caseInfo = raw
+  // Case info = header minus PGY, date, attending
+  let caseInfo = header
     .replace(/\bPGY[-\s]?[1-5]\b/gi, "")
     .replace(/\bDr\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?/g, "")
-    .replace(/\bMRN[:\s#]*[A-Z0-9-]{4,12}\b/gi, "")
-    .replace(/\bCPT[:\s]*[0-9,\s]+/gi, "")
-    .replace(/\b(?:notes?|findings?|complications?|pearls?)[:\s,]+[^\n]{3,150}/gi, "")
-    .replace(/\bapproach[:\s,]+[^,\.\n]{3,60}/gi, "")
-    .replace(/\b(?:implants?|hardware|fixation)[:\s,]+[^,\.\n]{2,80}/gi, "")
-    .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+[0-9]{1,2}(?:st|nd|rd|th)?(?:[,\s]+[0-9]{4})?\b/gi, "")
-    .replace(/[,;\s]{2,}/g, " ").trim();
-  const sents = caseInfo.match(/[^.!?]+[.!?]*/g) || [caseInfo];
-  caseInfo = sents.slice(0,2).join(" ").trim() || raw.split(/[.!?]/)[0].trim();
+    .replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+[0-9]{1,2}(?:st|nd|rd|th)?(?:[,\s]+[0-9]{4})?\b/gi, "")
+    .replace(/[,;\s]{2,}/g, " ").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+
+  // ── Step 3: Extract labeled fields directly from segments ──
+  const approach  = seg("approach");
+  const notes     = seg("notes").replace(/,?\s*CPT[:\s]*[0-9,\s]*/gi, "").trim();
+  const mrn       = seg("mrn");
+
+  // CPT: normalize spacing and remove double commas
+  let cptCodes = seg("cpt");
+  if (!cptCodes) {
+    const cptM = raw.match(/\bCPT[:\s]*([0-9]{5}(?:[,\s]+[0-9]{5})*)/i);
+    if (cptM) cptCodes = cptM[1];
+  }
+  cptCodes = cptCodes.replace(/\s+/g, " ").replace(/,\s*,/g, ",").replace(/^,|,$/g, "").trim();
+
+  // Implants: labeled OR "no implants" OR size+device fallback
+  let implants = seg("implants") || seg("hardware");
+  if (!implants && /\bno\s+implants?\b/i.test(raw)) implants = "None";
+  if (!implants) {
+    // Fallback: match size+device e.g. "2.5mm ESIN", "single K-wire", "3.5 locking plate"
+    const devM = raw.match(/\b(?:single\s+)?(?:[0-9]+(?:\.[0-9]+)?\s*(?:mm|cm)\s+)?([A-Z]{2,6}|[Kk][-\s]?[Ww]ire|elastic\s+nail|locking\s+plate|intramedullary\s+nail|cannulated\s+screw|anchor|rod|pin)\b/);
+    if (devM) implants = devM[0].trim();
+  }
 
   return { trainingYear, date, attending, caseInfo, approach, implants, notes, mrn, cptCodes };
 }
