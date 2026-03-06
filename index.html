@@ -940,47 +940,61 @@ function parseCase(raw) {
   const mrnM = raw.match(/\bMRN[:\s#]*([A-Z0-9-]{4,12})\b/i);
   const mrn = mrnM ? mrnM[1] : "";
 
-  // ── CPT ──
+  // ── CPT — extract first, so it doesn't bleed into notes ──
   const cptM = raw.match(/\bCPT[:\s]*([0-9]{5}(?:[,\s]+[0-9]{5})*)/i);
-  const cptCodes = cptM ? cptM[1].replace(/\s+/g,", ") : "";
+  const cptCodes = cptM ? cptM[1].replace(/\s+/g,", ").replace(/,,/g,",") : "";
 
-  // ── Approach ──
+  // ── Approach — handle labeled field OR numbered compartment patterns ──
   let approach = "";
-  const appM = raw.match(/\b(standard|volar|dorsal|medial|lateral|posterior|anterior|anterolateral|posteromedial|extensile|henry|kocher|thompson|triceps.splitting|transtibial|transtendinous|mini.open|open|arthroscopic|percutaneous|minimally\s+invasive|midline|parapatellar|subvastus|trivector|watson.jones|smith.petersen|ilioinguinal|stoppa|hardinge|moore|southern)\s+approach\b/i);
-  if (appM) approach = appM[0];
-  else {
-    const appM2 = raw.match(/\bapproach[:\s]+([^,\.;\n]{3,40})/i);
-    if (appM2) approach = appM2[1].trim();
+  // First: explicit "approach: X" label
+  const appLabelM = raw.match(/\bapproach[:\s,]+([^,\.\n]{3,60}?)(?:\s*,|\s*implant|\s*note|\s*CPT|$)/i);
+  if (appLabelM) {
+    approach = appLabelM[1].trim();
+  } else {
+    // Second: known named approaches
+    const appNameM = raw.match(/\b(standard|volar|dorsal|medial|lateral|posterior|anterior|anterolateral|posteromedial|extensile|henry|kocher|thompson|triceps.splitting|transtibial|transtendinous|mini.open|open|arthroscopic|percutaneous|minimally\s+invasive|midline|parapatellar|subvastus|trivector|watson.jones|smith.petersen|ilioinguinal|stoppa|hardinge|moore|southern|closed|radial|ulnar)(?:\s+approach|\s+sided)?/i);
+    if (appNameM) approach = appNameM[0].trim();
+    // Third: extensor/flexor compartment patterns e.g. "2nd/3rd extensor compartment"
+    const compM = raw.match(/\b([0-9]+(?:st|nd|rd|th)?(?:\s*[/\-]\s*[0-9]+(?:st|nd|rd|th)?)?)\s+(extensor|flexor|dorsal|volar)\s+compartment\b/i);
+    if (compM) approach = (approach ? approach + ", " : "") + compM[0].trim();
   }
 
-  // ── Implants ──
+  // ── Implants — labeled field gets priority, then specific device patterns ──
   let implants = "";
-  if (/\bno\s+implants?\b|\bnone\b/i.test(raw)) {
+  if (/\bno\s+implants?\b/i.test(raw)) {
     implants = "None";
   } else {
-    const impM = raw.match(/\b(?:implants?|hardware|fixation|graft)[:\s]+([^,\.;\n]{3,80})/i);
-    if (impM) implants = impM[1].trim();
-    else if (/\b(plate|nail|screw|rod|graft|prosthesis|anchor|btb|hamstring|allograft|autograft|locking|intramedullary)\b/i.test(raw)) {
-      const impM2 = raw.match(/\b((?:(?:plate|nail|screw|rod|graft|prosthesis|anchor|btb|hamstring|allograft|autograft|locking|intramedullary)[a-z\s,-]*){1,8})/i);
-      if (impM2) implants = impM2[1].trim().slice(0,80);
+    // Explicit implant label
+    const impLabelM = raw.match(/\b(?:implants?|hardware|fixation)[:\s,]+([^,\.\n]{2,80}?)(?:\s*,|\s*note|\s*CPT|\s*approach|$)/i);
+    if (impLabelM) {
+      implants = impLabelM[1].trim();
+    } else {
+      // Device-specific patterns: size + device name (e.g. "2.5mm ESIN", "3.5 locking plate", "single k-wire")
+      const deviceM = raw.match(/\b(?:single\s+)?(?:[0-9]+(?:\.[0-9]+)?\s*mm\s+)?([A-Z]{2,6}|k[-\s]?wire|elastic\s+nail|locking\s+plate|intramedullary\s+nail|cannulated\s+screw|anchor|rod|pin)\b/i);
+      if (deviceM) implants = deviceM[0].trim();
     }
   }
 
-  // ── Notes ──
+  // ── Notes — strip CPT from notes if it bled in ──
   let notes = "";
-  const notesM = raw.match(/\b(?:notes?|findings?|complications?|pearls?)[:\s]+([^\n]{3,150})/i);
-  if (notesM) notes = notesM[1].trim();
+  const notesM = raw.match(/\b(?:notes?|findings?|complications?|pearls?)[:\s,]+([^\n]{3,150})/i);
+  if (notesM) {
+    notes = notesM[1]
+      .replace(/,?\s*CPT[:\s]*[0-9,\s]*/gi, "")
+      .trim();
+  }
 
-  // ── Case Info — strip extracted parts, keep the procedure ──
+  // ── Case Info — strip all extracted fields, keep the procedure ──
   let caseInfo = raw
     .replace(/\bPGY[-\s]?[1-5]\b/gi, "")
     .replace(/\bDr\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?/g, "")
     .replace(/\bMRN[:\s#]*[A-Z0-9-]{4,12}\b/gi, "")
     .replace(/\bCPT[:\s]*[0-9,\s]+/gi, "")
-    .replace(/\b(?:notes?|findings?|complications?|pearls?)[:\s]+[^\n]{3,150}/gi, "")
+    .replace(/\b(?:notes?|findings?|complications?|pearls?)[:\s,]+[^\n]{3,150}/gi, "")
+    .replace(/\bapproach[:\s,]+[^,\.\n]{3,60}/gi, "")
+    .replace(/\b(?:implants?|hardware|fixation)[:\s,]+[^,\.\n]{2,80}/gi, "")
     .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+[0-9]{1,2}(?:st|nd|rd|th)?(?:[,\s]+[0-9]{4})?\b/gi, "")
     .replace(/[,;\s]{2,}/g, " ").trim();
-  // Keep first 2 sentences
   const sents = caseInfo.match(/[^.!?]+[.!?]*/g) || [caseInfo];
   caseInfo = sents.slice(0,2).join(" ").trim() || raw.split(/[.!?]/)[0].trim();
 
