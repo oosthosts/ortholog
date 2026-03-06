@@ -1047,6 +1047,7 @@ function setupMultiCase() {
     <button onclick="prevCase()" style="flex:1;padding:10px;background:var(--faint);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--sans);cursor:pointer;font-size:13px;">← Prev</button>
     <span id="caseCounter" style="font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;">1 of ${extractedCases.length}</span>
     <button onclick="nextCase()" style="flex:1;padding:10px;background:var(--faint);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--sans);cursor:pointer;font-size:13px;">Next →</button>
+    <button id="saveAllBtn" onclick="saveAllCases()" style="flex:2;padding:10px;background:linear-gradient(135deg,#0A3A1A,#1FD17A);border:1px solid #1FD17A;border-radius:10px;color:#fff;font-family:var(--sans);font-weight:600;cursor:pointer;font-size:13px;">Save All ${extractedCases.length}</button>
   `;
   sec.insertBefore(nav, sec.firstChild);
 }
@@ -1130,48 +1131,71 @@ function renderFields(caseData) {
 }
 
 // ── Save to sheet ─────────────────────────────────────────
+// Send a single case object to the sheet
+async function postCase(caseData) {
+  const payload = { tab: activeTab, ...caseData };
+  await fetch(SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+}
+
+// Save current single case
 async function saveToSheet() {
   saveCurrentFieldsToCase();
-  const caseData = extractedCases[currentCaseIdx];
-
   const btn = document.getElementById("saveBtn");
+  const btnLabel = () => `<span>Save to Google Sheet</span><span class="tab-indicator" id="saveTabLabel">${TABS[activeTab]?.label?.toUpperCase()}</span>`;
   btn.disabled = true;
   btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> Saving…';
 
-  const payload = { tab: activeTab, ...caseData };
-
-  const btnLabel = () => `<span>Save to Google Sheet</span><span class="tab-indicator" id="saveTabLabel">${TABS[activeTab]?.label?.toUpperCase()}</span>`;
-
   try {
-    // Use no-cors POST — Apps Script accepts this even without CORS headers.
-    // We won't get a JSON response back (opaque), but the write still succeeds.
-    await fetch(SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-
-    // If we get here without throwing, the request was sent successfully
-    showToast(`✓ Saved to ${TABS[activeTab]?.label} tab!`, "success");
+    await postCase(extractedCases[currentCaseIdx]);
+    showToast(`✓ Case ${currentCaseIdx + 1} saved to ${TABS[activeTab]?.label} tab!`, "success");
 
     if (extractedCases.length > 1 && currentCaseIdx < extractedCases.length - 1) {
       setTimeout(() => nextCase(), 600);
-      btn.disabled = false;
-      btn.innerHTML = btnLabel();
     } else {
-      setTimeout(() => {
-        resetForm();
-        btn.disabled = false;
-        btn.innerHTML = btnLabel();
-      }, 1200);
+      setTimeout(() => { resetForm(); }, 1200);
     }
   } catch(err) {
     console.error("Save error:", err);
     showToast(`Save failed: ${err.message}`, "error");
+  } finally {
     btn.disabled = false;
     btn.innerHTML = btnLabel();
   }
+}
+
+// Save ALL cases sequentially — used for multi-case entries
+async function saveAllCases() {
+  saveCurrentFieldsToCase();
+  const total = extractedCases.length;
+  const btn = document.getElementById("saveAllBtn");
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> Saving all ${total} cases…`; }
+
+  let saved = 0;
+  let failed = 0;
+  for (let i = 0; i < total; i++) {
+    try {
+      await postCase(extractedCases[i]);
+      saved++;
+      showToast(`✓ Saved case ${i+1} of ${total}…`, "success");
+      await new Promise(r => setTimeout(r, 400)); // small delay between requests
+    } catch(err) {
+      failed++;
+      console.error(`Case ${i+1} failed:`, err);
+    }
+  }
+
+  if (failed === 0) {
+    showToast(`✓ All ${saved} cases saved to ${TABS[activeTab]?.label}!`, "success");
+  } else {
+    showToast(`${saved} saved, ${failed} failed — check console`, "error");
+  }
+
+  setTimeout(() => { resetForm(); }, 1200);
 }
 
 function resetForm() {
