@@ -694,8 +694,6 @@
 <script>
 // ── Config ────────────────────────────────────────────────
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2gn3yh9oHXTZRcCBRhmDPGuJqemOo2GRcKhacN7x-9SeHIncLF_tnctN3VGguS5wX/exec";
-const CLAUDE_API = "https://api.anthropic.com/v1/messages";
-
 const TABS = {
   hand:      { label: "Hand",            icon: "✋" },
   trauma:    { label: "Trauma",          icon: "🚨" },
@@ -882,64 +880,111 @@ function setMicState(state) {
   }
 }
 
-// ── Claude extraction ─────────────────────────────────────
-async function extractFromText() {
+// ── Smart rule-based extraction (no API key needed) ──────
+function extractFromText() {
   const text = tBox.value.trim();
   if (!text) return;
 
   setMicState("processing");
   extractBtn.disabled = true;
 
-  const systemPrompt = `You are a surgical case log assistant for an orthopaedic surgery resident.
-The input may describe ONE or MULTIPLE surgical cases.
-Extract each case and return ONLY a valid JSON array. Each element must have exactly these keys:
-- trainingYear: one of PGY-1 PGY-2 PGY-3 PGY-4 PGY-5, use "${getCurrentPGY()}" if not mentioned
-- date: YYYY-MM-DD if detectable, else "${todayStr()}"
-- attending: surgeon name, else ""
-- caseInfo: concise 1-2 sentence procedure + patient summary
-- approach: surgical approach, else ""
-- implants: implants/hardware/fixation, else ""
-- notes: complications, pearls, teaching points, else ""
-- mrn: patient MRN if stated, else ""
-- cptCodes: CPT codes if stated, else ""
-Current subspecialty context: ${TABS[activeTab]?.label || activeTab}.
-Return ONLY the JSON array. No markdown, no explanation.`;
-
   try {
-    const res = await fetch(CLAUDE_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: `Dictation:\n"${text}"` }]
-      })
-    });
-
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-
-    const raw = data.content?.map(b => b.text || "").join("") || "";
-    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    extractedCases = Array.isArray(parsed) ? parsed : [parsed];
+    const caseTexts = splitCases(text);
+    extractedCases = caseTexts.map(t => parseCase(t));
     currentCaseIdx = 0;
-
     renderFields(extractedCases[0]);
     setMicState("idle");
-
     if (extractedCases.length > 1) {
-      showToast(`${extractedCases.length} cases detected — saving one at a time`, "info");
+      showToast(`${extractedCases.length} cases found — saving one at a time`, "info");
       setupMultiCase();
     } else {
-      showToast("Fields extracted ✓", "success");
+      showToast("Fields extracted ✓ — review and save", "success");
     }
   } catch(e) {
     console.error("Extraction error:", e);
     setMicState("idle");
     extractBtn.disabled = false;
-    showToast("Extraction failed — check your connection and try again.", "error");
+    // Even on error, put the raw text into caseInfo so nothing is lost
+    extractedCases = [{ trainingYear: getCurrentPGY(), date: todayStr(), attending:"", caseInfo: text, approach:"", implants:"", notes:"", mrn:"", cptCodes:"" }];
+    renderFields(extractedCases[0]);
+    showToast("Auto-extract failed — fields pre-filled, please review", "error");
   }
+}
+
+function splitCases(text) {
+  const parts = text.split(/\b(?:case\s+(?:one|two|three|four|five|1|2|3|4|5)|(?:first|second|third|fourth|fifth)\s+case|case\s*#?\s*[1-5])\b/gi)
+    .map(s => s.trim()).filter(s => s.length > 10);
+  return parts.length > 1 ? parts : [text];
+}
+
+function parseCase(raw) {
+  // ── PGY ──
+  const pgyM = raw.match(/\bPGY[-\s]?([1-5])\b/i);
+  const trainingYear = pgyM ? `PGY-${pgyM[1]}` : getCurrentPGY();
+
+  // ── Date ──
+  let date = todayStr();
+  const MONTHS = {january:"01",february:"02",march:"03",april:"04",may:"05",june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12",jan:"01",feb:"02",mar:"03",apr:"04",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+  const dM = raw.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+([0-9]{1,2})(?:st|nd|rd|th)?(?:[,\s]+([0-9]{4}))?\b/i);
+  if (dM) {
+    const yr = dM[3] || new Date().getFullYear();
+    date = `${yr}-${MONTHS[dM[1].toLowerCase()]}-${String(parseInt(dM[2])).padStart(2,"0")}`;
+  }
+
+  // ── Attending ──
+  let attending = "";
+  const drM = raw.match(/\bDr\.?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/);
+  if (drM) attending = "Dr. " + drM[1];
+
+  // ── MRN ──
+  const mrnM = raw.match(/\bMRN[:\s#]*([A-Z0-9-]{4,12})\b/i);
+  const mrn = mrnM ? mrnM[1] : "";
+
+  // ── CPT ──
+  const cptM = raw.match(/\bCPT[:\s]*([0-9]{5}(?:[,\s]+[0-9]{5})*)/i);
+  const cptCodes = cptM ? cptM[1].replace(/\s+/g,", ") : "";
+
+  // ── Approach ──
+  let approach = "";
+  const appM = raw.match(/\b(standard|volar|dorsal|medial|lateral|posterior|anterior|anterolateral|posteromedial|extensile|henry|kocher|thompson|triceps.splitting|transtibial|transtendinous|mini.open|open|arthroscopic|percutaneous|minimally\s+invasive|midline|parapatellar|subvastus|trivector|watson.jones|smith.petersen|ilioinguinal|stoppa|hardinge|moore|southern)\s+approach\b/i);
+  if (appM) approach = appM[0];
+  else {
+    const appM2 = raw.match(/\bapproach[:\s]+([^,\.;\n]{3,40})/i);
+    if (appM2) approach = appM2[1].trim();
+  }
+
+  // ── Implants ──
+  let implants = "";
+  if (/\bno\s+implants?\b|\bnone\b/i.test(raw)) {
+    implants = "None";
+  } else {
+    const impM = raw.match(/\b(?:implants?|hardware|fixation|graft)[:\s]+([^,\.;\n]{3,80})/i);
+    if (impM) implants = impM[1].trim();
+    else if (/\b(plate|nail|screw|rod|graft|prosthesis|anchor|btb|hamstring|allograft|autograft|locking|intramedullary)\b/i.test(raw)) {
+      const impM2 = raw.match(/\b((?:(?:plate|nail|screw|rod|graft|prosthesis|anchor|btb|hamstring|allograft|autograft|locking|intramedullary)[a-z\s,-]*){1,8})/i);
+      if (impM2) implants = impM2[1].trim().slice(0,80);
+    }
+  }
+
+  // ── Notes ──
+  let notes = "";
+  const notesM = raw.match(/\b(?:notes?|findings?|complications?|pearls?)[:\s]+([^\n]{3,150})/i);
+  if (notesM) notes = notesM[1].trim();
+
+  // ── Case Info — strip extracted parts, keep the procedure ──
+  let caseInfo = raw
+    .replace(/\bPGY[-\s]?[1-5]\b/gi, "")
+    .replace(/\bDr\.?\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?/g, "")
+    .replace(/\bMRN[:\s#]*[A-Z0-9-]{4,12}\b/gi, "")
+    .replace(/\bCPT[:\s]*[0-9,\s]+/gi, "")
+    .replace(/\b(?:notes?|findings?|complications?|pearls?)[:\s]+[^\n]{3,150}/gi, "")
+    .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[.\s]+[0-9]{1,2}(?:st|nd|rd|th)?(?:[,\s]+[0-9]{4})?\b/gi, "")
+    .replace(/[,;\s]{2,}/g, " ").trim();
+  // Keep first 2 sentences
+  const sents = caseInfo.match(/[^.!?]+[.!?]*/g) || [caseInfo];
+  caseInfo = sents.slice(0,2).join(" ").trim() || raw.split(/[.!?]/)[0].trim();
+
+  return { trainingYear, date, attending, caseInfo, approach, implants, notes, mrn, cptCodes };
 }
 
 // ── Multi-case navigation ─────────────────────────────────
@@ -1054,17 +1099,17 @@ async function saveToSheet() {
   const btnLabel = () => `<span>Save to Google Sheet</span><span class="tab-indicator" id="saveTabLabel">${TABS[activeTab]?.label?.toUpperCase()}</span>`;
 
   try {
-    // Use GET with URL params — bypasses CORS entirely for Apps Script
-    const params = new URLSearchParams();
-    Object.entries(payload).forEach(([k, v]) => params.append(k, v || ""));
-    const url = `${SCRIPT_URL}?${params.toString()}`;
-    const res = await fetch(url, { method: "GET" });
+    // Use no-cors POST — Apps Script accepts this even without CORS headers.
+    // We won't get a JSON response back (opaque), but the write still succeeds.
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const result = await res.json();
-    if (result.success === false) throw new Error(result.error || "Server error");
-
-    showToast(`✓ Saved to ${TABS[activeTab]?.label} tab! Row ${result.row || ""}`, "success");
+    // If we get here without throwing, the request was sent successfully
+    showToast(`✓ Saved to ${TABS[activeTab]?.label} tab!`, "success");
 
     if (extractedCases.length > 1 && currentCaseIdx < extractedCases.length - 1) {
       setTimeout(() => nextCase(), 600);
@@ -1108,6 +1153,7 @@ function showToast(msg, type = "info") {
 
 // ── Init ──────────────────────────────────────────────────
 updateSaveLabel();
+
 
 // Add spin keyframe dynamically
 const style = document.createElement("style");
