@@ -693,7 +693,7 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2gn3yh9oHXTZRcCBRhmDPGuJqemOo2GRcKhacN7x-9SeHIncLF_tnctN3VGguS5wX/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwTAcp8K_EZ_G6QrkLLBOOKnUWVqt1fpBszVNMVsEupCu3MDdntmcj3a5zAxC0kb6Kx/exec";
 const TABS = {
   hand:      { label: "Hand",            icon: "✋" },
   trauma:    { label: "Trauma",          icon: "🚨" },
@@ -709,15 +709,20 @@ const TABS = {
 };
 
 const FIELDS = [
-  { key: "trainingYear", label: "PGY",       type: "select", options: ["PGY-1","PGY-2","PGY-3","PGY-4","PGY-5"] },
-  { key: "date",         label: "Date",       type: "date"   },
-  { key: "attending",    label: "Attending",  type: "text"   },
-  { key: "caseInfo",     label: "Case",       type: "textarea" },
-  { key: "approach",     label: "Approach",   type: "text"   },
-  { key: "implants",     label: "Implants",   type: "text"   },
-  { key: "notes",        label: "Notes",      type: "textarea" },
-  { key: "mrn",          label: "MRN",        type: "text"   },
-  { key: "cptCodes",     label: "CPT",        type: "text"   },
+  { key: "trainingYear",  label: "PGY",           type: "select", options: ["PGY-1","PGY-2","PGY-3","PGY-4","PGY-5"] },
+  { key: "date",          label: "Date",           type: "date"     },
+  { key: "attending",     label: "Attending",      type: "text"     },
+  { key: "caseInfo",      label: "Case",           type: "textarea" },
+  { key: "approach",      label: "Approach",       type: "text"     },
+  { key: "implants",      label: "Implants",       type: "text"     },
+  { key: "notes",         label: "Notes",          type: "textarea" },
+  { key: "mrn",           label: "MRN",            type: "text"     },
+  { key: "cptCodes",      label: "CPT",            type: "text"     },
+  { key: "concerns",      label: "Concerns",       type: "text"     },
+  { key: "comorbidities", label: "Comorbidities",  type: "text"     },
+  { key: "outcome",       label: "Outcome",        type: "text"     },
+  { key: "complications", label: "Complications",  type: "text"     },
+  { key: "followUp",      label: "Follow-Up",      type: "text"     },
 ];
 
 function getCurrentPGY() {
